@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { useState, useEffect } from 'react';
 import HumanChat from '../components/HumanChat';
@@ -129,4 +129,5 @@ export default function InboxPage() {
 
     </div>
   );
+
 }
