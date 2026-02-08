@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import HumanChat from '../components/HumanChat';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-
+export const dynamic = 'force-dynamic';
 export default function InboxPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -131,3 +131,4 @@ export default function InboxPage() {
   );
 
 }
+
