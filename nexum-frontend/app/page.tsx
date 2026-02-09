@@ -1,334 +1,247 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link'; // <--- IMPORTANTE: Importato Link
-import HumanChat from './components/HumanChat';
-import NotificheBtn from './components/NotificheBtn';
+import React, { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import AIChatPopup from './components/AIChatPopup'; // Assicurati che questo file esista
 
-// --- TIPI DI DATI ---
-interface News {
-  id: number;
-  titolo: string;
-  categoria: string;
-  riassunto: string;
-}
+// --- CONFIGURAZIONE SUPABASE ---
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-interface Professionista {
-  id: number;
-  nome: string;
-  cognome: string;
-  titolo_professionale: string;
-  descrizione: string;
-  premium?: boolean;
-}
+// --- DATI STATICI (LINK ISTITUZIONALI) ---
+const linkLegali = [
+  { nome: "PST Giustizia", url: "https://pst.giustizia.it", icon: "balance", desc: "Fascicolo Telematico" },
+  { nome: "Cassazione", url: "http://www.italgiure.giustizia.it", icon: "gavel", desc: "Sentenze e Legittimità" },
+  { nome: "Gazzetta Uff.", url: "https://www.gazzettaufficiale.it", icon: "menu_book", desc: "Normativa" },
+  { nome: "Cassa Forense", url: "https://www.cassaforense.it", icon: "account_balance", desc: "Previdenza" },
+];
 
-export default function Home() {
-  const router = useRouter();
-  
-  const [utenteLoggato, setUtenteLoggato] = useState<any>(null);
-  const [newsFiltrate, setNewsFiltrate] = useState<News[]>([]);
-  const [professionisti, setProfessionisti] = useState<Professionista[]>([]);
-  const [professionistiFiltrati, setProfessionistiFiltrati] = useState<Professionista[]>([]);
-  const [ricerca, setRicerca] = useState("");
+export default function Homepage() {
+  // --- STATI PER LA LOGICA SOCIAL (Quelli che avevamo perso) ---
+  const [posts, setPosts] = useState<any[]>([]);
+  const [newPost, setNewPost] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [showNotifications, setShowNotifications] = useState(false);
 
-  // --- STATO CHAT UMANA ---
-  const [chatPartner, setChatPartner] = useState<string | null>(null);
-
-  // --- 1. CARICAMENTO DATI ---
+  // --- RECUPERO POST DA SUPABASE ---
   useEffect(() => {
-    const datiSalvati = localStorage.getItem('utente_nexum');
-    if (!datiSalvati) {
-        router.push('/registrazione');
-        return;
+    fetchPosts();
+  }, []);
+
+  const fetchPosts = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*')
+        .order('created_at', { ascending: false });
+        
+      if (error) throw error;
+      setPosts(data || []);
+    } catch (error) {
+      console.error("Errore fetch posts:", error);
+    } finally {
+      setLoading(false);
     }
-    const utente = JSON.parse(datiSalvati);
-    setUtenteLoggato(utente);
-
-    fetch('https://nexum-backend.onrender.com/news')
-        .then((res) => res.json())
-        .then((data) => setNewsFiltrate(data))
-        .catch(console.error);
-
-    fetch('https://nexum-backend.onrender.com/professionisti')
-        .then((res) => res.json())
-        .then((data) => {
-            const dataWithPremium = data.map((p: any, index: number) => ({
-                ...p,
-                premium: index % 3 === 0 
-            }));
-            setProfessionisti(dataWithPremium);
-            setProfessionistiFiltrati(dataWithPremium);
-        })
-        .catch(console.error);
-
-  }, [router]);
-
-  // --- 2. GESTIONE RICERCA ---
-  useEffect(() => {
-    if (ricerca.trim() === "") {
-        setProfessionistiFiltrati(professionisti);
-    } else {
-        const term = ricerca.toLowerCase();
-        const filtrati = professionisti.filter(p => 
-            p.nome.toLowerCase().includes(term) || 
-            p.cognome.toLowerCase().includes(term) ||
-            p.titolo_professionale.toLowerCase().includes(term)
-        );
-        setProfessionistiFiltrati(filtrati);
-    }
-  }, [ricerca, professionisti]);
-
-  // Funzione che apre la chat
-  const apriChatUmana = (e: React.MouseEvent, nomeCollega: string) => {
-      e.stopPropagation(); 
-      setChatPartner(nomeCollega); 
   };
 
-  // Funzione che apre il profilo pubblico
-  const apriProfilo = (nomeCollega: string) => {
-      router.push(`/profilo/public/${nomeCollega}`);
-  };
+  // --- CREAZIONE NUOVO POST ---
+  const handleCreaPost = async () => {
+    if (!newPost.trim()) return;
 
-  if (!utenteLoggato) return <div className="min-h-screen bg-black text-white flex items-center justify-center">Caricamento...</div>;
+    try {
+      // Nota: Qui dovremmo usare l'ID dell'utente loggato. Per ora usiamo un placeholder.
+      const { error } = await supabase
+        .from('posts')
+        .insert([{ 
+            autore: "Avvocato Utente", // In futuro: user.nome
+            contenuto: newPost, 
+            likes: 0,
+            commenti: 0
+        }]);
+
+      if (error) throw error;
+      
+      setNewPost("");
+      fetchPosts(); // Ricarica il feed
+    } catch (error) {
+      alert("Errore nella creazione del post");
+    }
+  };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-black text-slate-100 font-sans selection:bg-[#7c3aed] selection:text-white">
-      
-      <style jsx global>{`
-        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap');
-        @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
-        body { font-family: 'Manrope', sans-serif; }
-        .material-symbols-outlined { font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #282e39; border-radius: 10px; }
-      `}</style>
+    <div className="flex h-screen bg-[#050505] text-white overflow-hidden font-sans">
+      {/* IMPORT ICONE (Corregge il problema visuale) */}
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
 
-      {/* --- CHAT POPUP --- */}
-      {chatPartner && (
-        <HumanChat 
-            mittente={utenteLoggato.nome} 
-            destinatario={chatPartner} 
-            onClose={() => setChatPartner(null)} 
-        />
-      )}
-
-      {/* --- SIDEBAR (SOLO DESKTOP) --- */}
-      <aside className="w-64 bg-black border-r border-slate-900 flex flex-col shrink-0 hidden md:flex">
-        <div className="p-6 flex items-center justify-start">
-           <img src="/logo.png" alt="NEXUM" className="h-10 w-auto object-contain" />
+      {/* --- COLONNA SINISTRA: NAVIGAZIONE (Fissa) --- */}
+      <aside className="w-64 border-r border-white/5 bg-[#0a0a0a] flex flex-col p-4 hidden md:flex">
+        <div className="flex items-center gap-3 px-2 mb-8">
+          <div className="w-8 h-8 bg-[#7c3aed] rounded-lg flex items-center justify-center font-bold text-white">N</div>
+          <span className="text-xl font-bold tracking-tighter italic">NEXUM <span className="text-[#7c3aed]">LEGAL</span></span>
         </div>
 
-        <nav className="flex-1 px-4 py-4 space-y-1">
-          <div className="px-3 mb-2 text-xs font-bold uppercase text-slate-500 tracking-wider">
-            Strumenti
-          </div>
+        <nav className="space-y-2 flex-1">
+          <a href="/profilo" className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 text-slate-400 hover:text-white transition-all">
+            <span className="material-symbols-outlined">person</span>
+            <span className="text-sm font-medium">Il mio Profilo</span>
+          </a>
+          <a href="/messaggi" className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 text-slate-400 hover:text-white transition-all">
+            <span className="material-symbols-outlined">mail</span>
+            <span className="text-sm font-medium">Messaggi</span>
+          </a>
+          <a href="/notifiche" className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 text-slate-400 hover:text-white transition-all">
+            <span className="material-symbols-outlined">notifications</span>
+            <span className="text-sm font-medium">Notifiche</span>
+          </a>
           
-          {(utenteLoggato.titolo_professionale === "Avvocato") ? (
-            <>
-              <a href="https://pst.giustizia.it" target="_blank" className="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-[#1c1f27] rounded-lg transition-colors group">
-                <span className="text-sm font-medium group-hover:text-white">Polisweb (PCT)</span>
-              </a>
-              <a href="https://www.cortedicassazione.it" target="_blank" className="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-[#1c1f27] rounded-lg transition-colors group">
-                <span className="text-sm font-medium group-hover:text-white">Cassazione</span>
-              </a>
-            </>
-          ) : (
-            <>
-              <a href="https://telematici.agenziaentrate.gov.it" target="_blank" className="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-[#1c1f27] rounded-lg transition-colors group">
-                <span className="text-sm font-medium group-hover:text-white">Cassetto Fiscale</span>
-              </a>
-              <a href="https://ivaservizi.agenziaentrate.gov.it" target="_blank" className="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-[#1c1f27] rounded-lg transition-colors group">
-                <span className="text-sm font-medium group-hover:text-white">Fatture & Corrisp.</span>
-              </a>
-            </>
-          )}
-
-          <div className="my-4 border-t border-slate-900"></div>
-
-          <a href="/profilo" className="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-[#1c1f27] rounded-lg transition-colors group">
-             <span className="text-sm font-medium group-hover:text-white">Il Mio Profilo</span>
-          </a>
-          <a href="/clienti" className="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-[#1c1f27] rounded-lg transition-colors group">
-             <span className="text-sm font-medium group-hover:text-white">Gestione Clienti</span>
-          </a>
-          <a href="/messaggi" className="flex items-center gap-3 px-3 py-2 text-slate-300 hover:bg-[#1c1f27] rounded-lg transition-colors group">
-             <span className="material-symbols-outlined text-slate-500 group-hover:text-[#7c3aed]">mail</span>
-             <span className="text-sm font-medium group-hover:text-white">Messaggi</span>
-             <span className="ml-auto w-2 h-2 rounded-full bg-[#7c3aed]"></span>
-          </a>
+          <div className="pt-6">
+            <p className="text-[10px] font-bold text-slate-500 uppercase px-3 mb-3">Strumenti Rapidi</p>
+            <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-[#7c3aed]/10 text-slate-400 hover:text-[#7c3aed] transition-all text-left">
+              <span className="material-symbols-outlined">calculate</span>
+              <span className="text-sm">Calcolo Termini</span>
+            </button>
+            <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-[#7c3aed]/10 text-slate-400 hover:text-[#7c3aed] transition-all text-left">
+              <span className="material-symbols-outlined">gavel</span>
+              <span className="text-sm">Codici Commentati</span>
+            </button>
+          </div>
         </nav>
-
-        <div className="p-4 border-t border-slate-900">
-          <a href="/profilo" className="flex items-center gap-3 p-2 bg-[#1c1f27] rounded-xl border border-slate-800 hover:border-[#7c3aed] transition-all cursor-pointer group">
-            <div className="w-10 h-10 rounded-lg bg-black flex items-center justify-center border border-[#7c3aed]/30 group-hover:bg-[#7c3aed] transition-colors overflow-hidden">
-                {utenteLoggato.immagineProfilo ? (
-                    <img src={utenteLoggato.immagineProfilo} className="w-full h-full object-cover" />
-                ) : (
-                    <span className="text-xs font-bold text-[#7c3aed] group-hover:text-white capitalize">{utenteLoggato.nome.charAt(0)}</span>
-                )}
-            </div>
-            <div className="overflow-hidden">
-              <p className="text-sm font-bold truncate text-white capitalize">
-                  {utenteLoggato.nome} {utenteLoggato.cognome}
-              </p>
-              <p className="text-xs text-slate-500 truncate group-hover:text-[#7c3aed] transition-colors">
-                  Vedi Profilo
-              </p>
-            </div>
-          </a>
-        </div>
       </aside>
 
-      {/* --- MAIN CONTENT --- */}
-      <main className="flex-1 overflow-y-auto custom-scrollbar bg-black">
-        
-        {/* HEADER RESPONSIVE (MOBILE + DESKTOP) */}
-        <header className="sticky top-0 z-10 flex items-center justify-between px-4 md:px-8 py-4 bg-black/80 backdrop-blur-md border-b border-slate-900 gap-4">
-          
-          {/* SEARCH BAR */}
-          <div className="relative flex-1 md:flex-none md:w-96">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">search</span>
-            <input 
-              value={ricerca}
-              onChange={(e) => setRicerca(e.target.value)}
-              className="w-full bg-[#1c1f27] border border-slate-800 rounded-lg pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-[#7c3aed]/50 focus:border-[#7c3aed] text-white placeholder:text-slate-500 outline-none transition-all" 
-              placeholder="Cerca..." 
-              type="text"
-            />
-          </div>
-
-          <div className="flex items-center gap-3 md:gap-4 shrink-0">
-             
-             {/* 1. MESSAGGI (Visibile solo su MOBILE qui, su Desktop è nella sidebar) */}
-             <Link href="/messaggi" className="md:hidden p-2 text-slate-400 hover:text-white rounded-lg">
-                <span className="material-symbols-outlined">mail</span>
-             </Link>
-
-             {/* 2. CAMPANELLO NOTIFICHE */}
-             {utenteLoggato && <NotificheBtn utenteNome={utenteLoggato.nome} />}
-
-             {/* Badge Professione (Solo Desktop) */}
-             <div className="px-2 md:px-3 py-1 bg-[#7c3aed]/10 border border-[#7c3aed]/30 rounded-full text-[10px] md:text-xs text-[#7c3aed] font-bold uppercase tracking-wider hidden sm:block">
-                {utenteLoggato.titolo_professionale}
-             </div>
-
-             {/* 3. PROFILO (Visibile solo su MOBILE - Cliccabile!) */}
-             {/* Su desktop c'è la sidebar, su mobile mostriamo questo pallino che porta al profilo */}
-             <Link href="/profilo" className="sm:hidden block">
-                 <div className="w-8 h-8 rounded-full bg-[#1c1f27] border border-slate-800 flex items-center justify-center text-[#7c3aed] font-bold text-xs overflow-hidden">
-                    {utenteLoggato.immagineProfilo ? (
-                        <img src={utenteLoggato.immagineProfilo} className="w-full h-full object-cover" />
-                    ) : (
-                        utenteLoggato.nome.charAt(0)
-                    )}
-                 </div>
-             </Link>
-
-          </div>
+      {/* --- COLONNA CENTRALE: WORKSPACE E FEED (Scorrevole) --- */}
+      <main className="flex-1 overflow-y-auto bg-[#050505] relative">
+        {/* Header Mobile/Desktop */}
+        <header className="sticky top-0 z-20 bg-[#050505]/80 backdrop-blur-md border-b border-white/5 p-4 flex justify-between items-center">
+            <h1 className="text-lg font-bold">Workspace</h1>
+            <div className="flex gap-4">
+                <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2 hover:bg-white/10 rounded-full">
+                    <span className="material-symbols-outlined text-slate-300">notifications</span>
+                    <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
+                </button>
+            </div>
         </header>
 
-        <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-8 pb-24 md:pb-6">
+        <div className="p-4 md:p-8 max-w-4xl mx-auto">
             
-            {/* SPONSOR */}
-            <section>
-                 <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">In Evidenza</h3>
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {professionisti.filter(p => p.premium).slice(0, 3).map((prof) => (
-                        <div key={prof.id} className="bg-gradient-to-br from-[#1c1f27] to-[#111] border border-[#7c3aed]/30 p-4 rounded-2xl flex items-center justify-between hover:shadow-lg hover:shadow-[#7c3aed]/10 transition-all cursor-pointer group">
-                            
-                            {/* CLIC SU QUESTO BLOCCO APRE IL PROFILO PUBBLICO */}
-                            <div className="flex items-center gap-4 cursor-pointer overflow-hidden" onClick={() => apriProfilo(prof.nome)}>
-                                <div className="w-12 h-12 rounded-full bg-[#7c3aed] flex items-center justify-center text-white font-bold text-lg shrink-0">
-                                    {prof.nome.charAt(0)}
-                                </div>
-                                <div className="overflow-hidden">
-                                    <h4 className="font-bold text-white text-sm hover:text-[#7c3aed] transition-colors truncate">{prof.nome} {prof.cognome}</h4>
-                                    <p className="text-xs text-[#c4b5fd] truncate">{prof.titolo_professionale}</p>
-                                </div>
-                            </div>
-
-                            {/* TASTO CHAT RAPIDA */}
-                            <button onClick={(e) => apriChatUmana(e, prof.nome)} className="text-slate-500 hover:text-[#7c3aed] group-hover:opacity-100 transition-opacity p-2 shrink-0">
-                                <span className="material-symbols-outlined">chat</span>
-                            </button>
+            {/* 1. SEZIONE LINK ISTITUZIONALI (La Dashboard) */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                {linkLegali.map((link, idx) => (
+                    <a key={idx} href={link.url} target="_blank" className="p-4 bg-[#0f0f0f] border border-white/5 rounded-2xl hover:border-[#7c3aed]/50 transition-all group">
+                        <div className="w-10 h-10 rounded-xl bg-[#7c3aed]/10 flex items-center justify-center text-[#7c3aed] mb-2 group-hover:bg-[#7c3aed] group-hover:text-white transition-colors">
+                            <span className="material-symbols-outlined">{link.icon}</span>
                         </div>
-                    ))}
-                 </div>
-            </section>
+                        <h3 className="text-sm font-bold text-slate-200">{link.nome}</h3>
+                        <p className="text-[10px] text-slate-500 truncate">{link.desc}</p>
+                    </a>
+                ))}
+            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* 2. CREA NUOVO POST (La logica social) */}
+            <div className="mb-8 bg-[#0f0f0f] border border-white/5 rounded-2xl p-4">
+                <div className="flex gap-4">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#7c3aed] to-blue-600 shrink-0"></div>
+                    <textarea 
+                        value={newPost}
+                        onChange={(e) => setNewPost(e.target.value)}
+                        placeholder="Condividi un aggiornamento professionale, una sentenza o un dubbio..."
+                        className="w-full bg-transparent text-sm text-white placeholder-slate-500 outline-none resize-none h-20 pt-2"
+                    />
+                </div>
+                <div className="flex justify-between items-center mt-2 border-t border-white/5 pt-3">
+                    <div className="flex gap-2">
+                        <button className="p-2 hover:bg-white/5 rounded-lg text-slate-400"><span className="material-symbols-outlined text-lg">attach_file</span></button>
+                        <button className="p-2 hover:bg-white/5 rounded-lg text-slate-400"><span className="material-symbols-outlined text-lg">image</span></button>
+                    </div>
+                    <button 
+                        onClick={handleCreaPost}
+                        className="px-6 py-2 bg-[#7c3aed] hover:bg-[#6d28d9] text-white text-sm font-bold rounded-xl transition-all"
+                    >
+                        Pubblica
+                    </button>
+                </div>
+            </div>
+
+            {/* 3. FEED DEI POST (Recuperati da Supabase) */}
+            <div className="space-y-6">
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4">Aggiornamenti dal Network</h3>
                 
-                {/* COLONNA SX: News */}
-                <div className="lg:col-span-2 space-y-6">
-                    <h3 className="text-lg font-bold text-white">Aggiornamenti</h3>
-                    <div className="grid gap-4">
-                        {newsFiltrate.map((item) => (
-                            <a href={`/news/${item.id}`} key={item.id} className="block">
-                                <div className="bg-[#1c1f27] border border-slate-800 p-6 rounded-2xl hover:border-[#7c3aed] transition-all group cursor-pointer relative overflow-hidden">
-                                    <div className="absolute inset-0 bg-[#7c3aed]/0 group-hover:bg-[#7c3aed]/5 transition-colors"></div>
-                                    <div className="flex flex-col md:flex-row md:justify-between md:items-start mb-3 relative z-10 gap-2">
-                                        <h4 className="font-bold text-lg text-white group-hover:text-[#c4b5fd] transition-colors line-clamp-2">{item.titolo}</h4>
-                                        <span className="bg-[#7c3aed]/10 text-[#a78bfa] text-[10px] font-bold uppercase px-3 py-1 rounded-full border border-[#7c3aed]/20 whitespace-nowrap self-start md:self-auto">
-                                            {item.categoria}
-                                        </span>
+                {loading ? (
+                    <div className="text-center py-10 text-slate-500">Caricamento feed...</div>
+                ) : posts.length === 0 ? (
+                    <div className="text-center py-10 text-slate-500 bg-[#0f0f0f] rounded-2xl">
+                        <span className="material-symbols-outlined text-4xl mb-2">post_add</span>
+                        <p>Nessun post ancora. Sii il primo a scrivere!</p>
+                    </div>
+                ) : (
+                    posts.map((post) => (
+                        <div key={post.id} className="bg-[#0f0f0f] border border-white/5 rounded-2xl p-6 hover:border-white/10 transition-colors">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center font-bold text-slate-400">
+                                        {post.autore?.charAt(0) || "U"}
                                     </div>
-                                    <p className="text-slate-400 text-sm leading-relaxed line-clamp-3 relative z-10">{item.riassunto}</p>
-                                    <div className="mt-4 flex items-center gap-2 text-[#7c3aed] text-xs font-bold relative z-10 opacity-0 group-hover:opacity-100 transition-opacity transform translate-y-2 group-hover:translate-y-0">
-                                        Leggi articolo <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                                    <div>
+                                        <h4 className="font-bold text-sm text-white">{post.autore}</h4>
+                                        <p className="text-xs text-slate-500">{post.titolo_professionale || "Avvocato"} • {new Date(post.created_at).toLocaleDateString()}</p>
                                     </div>
                                 </div>
-                            </a>
-                        ))}
-                    </div>
-                </div>
+                                <button className="text-slate-500 hover:text-white"><span className="material-symbols-outlined">more_horiz</span></button>
+                            </div>
+                            
+                            <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap mb-4">
+                                {post.contenuto}
+                            </p>
 
-                {/* COLONNA DX: Network */}
-                <div className="space-y-6">
-                    <div className="bg-[#1c1f27] rounded-3xl border border-slate-800 p-6 h-auto md:h-[600px] flex flex-col">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="font-bold text-white">Network</h3>
-                            <span className="text-xs text-slate-500">{professionistiFiltrati.length} colleghi</span>
+                            <div className="flex items-center gap-6 border-t border-white/5 pt-4">
+                                <button className="flex items-center gap-2 text-slate-500 hover:text-[#7c3aed] text-xs transition-colors group">
+                                    <span className="material-symbols-outlined text-lg group-hover:scale-110 transition-transform">favorite</span>
+                                    <span>{post.likes || 0} Utile</span>
+                                </button>
+                                <button className="flex items-center gap-2 text-slate-500 hover:text-white text-xs transition-colors">
+                                    <span className="material-symbols-outlined text-lg">chat_bubble</span>
+                                    <span>{post.commenti || 0} Commenti</span>
+                                </button>
+                                <button className="flex items-center gap-2 text-slate-500 hover:text-white text-xs transition-colors ml-auto">
+                                    <span className="material-symbols-outlined text-lg">share</span>
+                                    <span>Condividi</span>
+                                </button>
+                            </div>
                         </div>
-                        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-2 max-h-[400px] md:max-h-none">
-                            {professionistiFiltrati.length === 0 ? (
-                                <p className="text-xs text-slate-500 text-center py-4">Nessun risultato.</p>
-                            ) : (
-                                professionistiFiltrati.map((prof) => ( 
-                                    <div key={prof.id} className="p-4 rounded-2xl bg-black border border-slate-800 hover:border-[#7c3aed]/50 transition-all group flex items-center gap-3 justify-between">
-                                        
-                                        {/* PARTE CLICCABILE -> PROFILO PUBBLICO */}
-                                        <div 
-                                            className="flex items-center gap-3 flex-1 cursor-pointer overflow-hidden" 
-                                            onClick={() => apriProfilo(prof.nome)}
-                                        >
-                                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#7c3aed] to-[#4c1d95] flex items-center justify-center text-sm font-bold text-white shadow-sm shrink-0">
-                                                {prof.nome.charAt(0)}{prof.cognome.charAt(0)}
-                                            </div>
-                                            <div className="overflow-hidden">
-                                                <p className="text-sm font-bold text-white truncate hover:text-[#7c3aed] transition-colors">{prof.nome} {prof.cognome}</p>
-                                                <p className="text-[10px] text-slate-400 uppercase tracking-wide truncate">{prof.titolo_professionale}</p>
-                                            </div>
-                                        </div>
-
-                                        {/* TASTO CHAT */}
-                                        <button 
-                                            onClick={(e) => apriChatUmana(e, prof.nome)}
-                                            className="px-3 py-2 bg-[#1c1f27] hover:bg-[#7c3aed] text-slate-300 hover:text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-2 border border-slate-700 hover:border-[#7c3aed] shrink-0"
-                                        >
-                                            <span className="material-symbols-outlined text-sm">chat</span>
-                                            <span className="hidden xl:inline">Messaggio</span>
-                                        </button>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                </div>
+                    ))
+                )}
             </div>
         </div>
       </main>
+
+      {/* --- COLONNA DESTRA: NOTIZIE & WIDGET (Fissa) --- */}
+      <aside className="w-80 border-l border-white/5 bg-[#0a0a0a] p-6 hidden xl:block overflow-y-auto">
+        <h3 className="text-xs font-bold text-[#7c3aed] uppercase tracking-widest mb-6 flex items-center gap-2">
+            <span className="material-symbols-outlined text-sm">newspaper</span>
+            News Giuridiche
+        </h3>
+        <div className="space-y-6 mb-10">
+            <div className="group cursor-pointer">
+                <span className="text-[9px] text-slate-500 font-bold uppercase">Cassazione Civile</span>
+                <h4 className="text-sm font-bold mt-1 group-hover:text-[#7c3aed] transition-colors">Sentenza n. 1234/26: Responsabilità medica e onere probatorio.</h4>
+            </div>
+            <div className="group cursor-pointer">
+                <span className="text-[9px] text-slate-500 font-bold uppercase">Fisco & Tasse</span>
+                <h4 className="text-sm font-bold mt-1 group-hover:text-[#7c3aed] transition-colors">Nuovi minimi Cassa Forense: ecco le tabelle 2026.</h4>
+            </div>
+        </div>
+
+        {/* PROMO AI */}
+        <div className="p-4 rounded-2xl bg-gradient-to-br from-[#111] to-black border border-white/10 text-center">
+            <span className="material-symbols-outlined text-[#7c3aed] text-3xl mb-2">smart_toy</span>
+            <h4 className="font-bold text-white text-sm mb-1">Nexum AI Assistant</h4>
+            <p className="text-xs text-slate-500 mb-3">Hai un dubbio su una procedura? Chiedi all'assistente.</p>
+        </div>
+      </aside>
+
+      {/* --- CHATBOT POPUP (Componente Esterno) --- */}
+      <AIChatPopup />
     </div>
   );
 }

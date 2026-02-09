@@ -1,10 +1,4 @@
 {
-<<<<<<< HEAD
-  "dependencies": {
-    "@supabase/supabase-js": "^2.95.3"
-  }
-}
-=======
   "name": "nexum-frontend",
   "version": "0.1.0",
   "private": true,
@@ -30,4 +24,3 @@
     "typescript": "^5"
   }
 }
->>>>>>> 48a29948441600547ec6683bee83a466a6413a41
